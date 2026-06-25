@@ -1,6 +1,6 @@
 -- MM2 Coin Farmer - FAST AS FUCK (SPEED 30)
 local SPEED = 35  -- you wanted more, here it is. Go higher at your own risk.
-local MAX_COINS_PER_ROUND = 40
+local MAX_COINS_PER_ROUND = 35
 local MAX_COIN_DISTANCE = 150
 
 local Players = game:GetService("Players")
