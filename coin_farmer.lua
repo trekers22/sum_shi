@@ -1,4 +1,4 @@
--- MM2 Coin Farmer - Based on working examples
+-- MM2 Coin Farmer - FINAL FIXED VERSION
 local SPEED = 16
 local MAX_COINS_PER_ROUND = 40
 
@@ -17,24 +17,27 @@ local function RefreshCharacter()
 end
 LocalPlayer.CharacterAdded:Connect(RefreshCharacter)
 
--- ========== PROPER COIN TRACKING ==========
-local Coins = {}  -- Dynamic coin list
+-- ========== COIN TRACKING ==========
+local Coins = {}
 
--- Initial scan: look for EXACT "Coin_Server" name
-for _, obj in ipairs(workspace:GetDescendants()) do
-    if obj:IsA("BasePart") and obj.Name == "Coin_Server" then
-        table.insert(Coins, obj)
+local function ScanCoins()
+    Coins = {}
+    for _, obj in ipairs(workspace:GetDescendants()) do
+        if obj:IsA("BasePart") and obj.Name == "Coin_Server" then
+            table.insert(Coins, obj)
+        end
     end
 end
 
--- Listen for new coins spawning
+-- Initial scan
+ScanCoins()
+
 workspace.DescendantAdded:Connect(function(obj)
     if obj:IsA("BasePart") and obj.Name == "Coin_Server" then
         table.insert(Coins, obj)
     end
 end)
 
--- Listen for coins being removed
 workspace.DescendantRemoving:Connect(function(obj)
     if obj:IsA("BasePart") and obj.Name == "Coin_Server" then
         for i, coin in ipairs(Coins) do
@@ -180,8 +183,8 @@ local function MoveToCoin(coin)
     if not coin or not coin.Parent then return false end
     if not Root or not Root.Parent then RefreshCharacter() end
     if not Root then return false end
-
     if roundCoins >= maxCoins then return false end
+    if Humanoid.Health <= 0 then return false end  -- dead, don't move
 
     local targetPos = coin.Position
 
@@ -226,8 +229,15 @@ end
 -- ========== FARM LOOP ==========
 local function FarmLoop()
     while isFarming do
+        -- Wait if character is dead or missing
         if not Root or not Root.Parent then
             RefreshCharacter()
+            task.wait(0.5)
+            continue
+        end
+
+        if Humanoid.Health <= 0 then
+            -- Dead, wait for respawn
             task.wait(0.5)
             continue
         end
@@ -245,22 +255,36 @@ local function FarmLoop()
             continue
         end
 
-        -- Find closest coin
+        -- Find closest coin (and remove any that are invalid)
         local closestCoin = nil
         local closestDist = math.huge
-        for _, coin in ipairs(Coins) do
+        local invalidIndices = {}
+        for i, coin in ipairs(Coins) do
             if coin and coin.Parent and coin:IsA("BasePart") then
                 local dist = (Root.Position - coin.Position).Magnitude
                 if dist < closestDist then
                     closestDist = dist
                     closestCoin = coin
                 end
+            else
+                table.insert(invalidIndices, i)
             end
+        end
+        -- Remove invalid coins
+        for i = #invalidIndices, 1, -1 do
+            table.remove(Coins, invalidIndices[i])
         end
 
         if closestCoin then
             local success = MoveToCoin(closestCoin)
             if success then
+                -- Manually remove this coin from list to prevent re-collecting
+                for i, coin in ipairs(Coins) do
+                    if coin == closestCoin then
+                        table.remove(Coins, i)
+                        break
+                    end
+                end
                 totalCoins = totalCoins + 1
                 roundCoins = roundCoins + 1
                 totalCoinLabel.Text = "Total: " .. totalCoins
