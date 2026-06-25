@@ -1,7 +1,7 @@
--- MM2 Coin Farmer - WITH LOBBY DETECTION & DISTANCE LIMIT
-local SPEED = 16
+-- MM2 Coin Farmer - WITH LOBBY DETECTION & DISTANCE LIMIT - FAST EDITION
+local SPEED = 22  -- increased from 16 – you can go up to 25 if you're feeling risky
 local MAX_COINS_PER_ROUND = 40
-local MAX_COIN_DISTANCE = 150  -- don't chase coins farther than this (prevents lobby flying)
+local MAX_COIN_DISTANCE = 150
 
 local Players = game:GetService("Players")
 local TweenService = game:GetService("TweenService")
@@ -58,16 +58,13 @@ local function GetGameState()
 end
 
 local function IsInLobby()
-    -- If game state is explicitly "Lobby" or "Waiting"
     local state = GetGameState()
     if state == "Lobby" or state == "Waiting" then
         return true
     end
-    -- If there are no coins at all, probably lobby
     if #Coins == 0 then
         return true
     end
-    -- If the closest coin is too far, we're not in a round
     if Root then
         local closestDist = math.huge
         for _, coin in ipairs(Coins) do
@@ -239,7 +236,7 @@ local function MoveToCoin(coin)
     local targetPos = coin.Position
     local distance = (Root.Position - targetPos).Magnitude
     if distance > MAX_COIN_DISTANCE then
-        return false  -- too far, skip
+        return false
     end
 
     if not isClipping then
@@ -283,7 +280,6 @@ end
 -- ========== FARM LOOP ==========
 local function FarmLoop()
     while isFarming do
-        -- Character checks
         if not Root or not Root.Parent then
             RefreshCharacter()
             task.wait(0.5)
@@ -295,7 +291,6 @@ local function FarmLoop()
             continue
         end
 
-        -- Lobby detection
         local inLobby = IsInLobby()
         roundStatus.Text = inLobby and "Status: LOBBY" or "Status: ROUND ACTIVE"
         if inLobby then
@@ -308,7 +303,6 @@ local function FarmLoop()
             continue
         end
 
-        -- Clean invalid coins from list
         local invalid = {}
         for i, coin in ipairs(Coins) do
             if not coin or not coin.Parent or not coin:IsA("BasePart") then
@@ -326,7 +320,6 @@ local function FarmLoop()
             continue
         end
 
-        -- Find closest valid coin (also check distance)
         local closestCoin = nil
         local closestDist = math.huge
         for _, coin in ipairs(Coins) do
@@ -340,14 +333,12 @@ local function FarmLoop()
         end
 
         if closestCoin then
-            -- If closest coin is too far, we're in lobby - skip
             if closestDist > MAX_COIN_DISTANCE then
                 task.wait(0.3)
                 continue
             end
             local success = MoveToCoin(closestCoin)
             if success then
-                -- Remove from list
                 for i, coin in ipairs(Coins) do
                     if coin == closestCoin then
                         table.remove(Coins, i)
