@@ -1,5 +1,5 @@
 -- MM2 Coin Farmer - ADVANCED (Octree-style spatial grid + dynamic speed)
-local SPEED_BASE = 45              -- base speed, but we'll scale it
+local SPEED_BASE = 55              -- base speed, but we'll scale it
 local MAX_COINS_PER_ROUND = 40
 local MAX_COIN_DISTANCE = 150
 local GRID_SIZE = 20               -- cell size for spatial grid
