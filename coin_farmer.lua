@@ -1,12 +1,12 @@
--- MM2 Coin Farmer - MOBILE EDITION (safe, no kicks)
-local SPEED = 16  -- NORMAL WALKING SPEED – DO NOT INCREASE UNLESS YOU WANT BANS
-local CLIP_ENABLED = false  -- CLIPPING IS OFF BY DEFAULT – TURN ON ONLY FOR STUCK COINS
+-- MM2 Coin Farmer - ROUND DETECTION + 40 COIN CAP
+local SPEED = 16  -- normal walking speed – safe
+local MAX_COINS_PER_ROUND = 40  -- stop collecting after this many coins in a round
 
 local Players = game:GetService("Players")
 local TweenService = game:GetService("TweenService")
 local LocalPlayer = Players.LocalPlayer
 
--- Character references (updated on respawn)
+-- Character references
 local Character = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
 local Humanoid = Character:WaitForChild("Humanoid")
 local Root = Character:WaitForChild("HumanoidRootPart")
@@ -18,15 +18,15 @@ local function RefreshCharacter()
 end
 LocalPlayer.CharacterAdded:Connect(RefreshCharacter)
 
--- ========== GUI (BIG BUTTONS FOR PHONES) ==========
+-- ========== GUI ==========
 local screenGui = Instance.new("ScreenGui")
 screenGui.Name = "CoinFarmerGUI"
 screenGui.ResetOnSpawn = false
 screenGui.Parent = LocalPlayer:WaitForChild("PlayerGui") or game:GetService("CoreGui")
 
 local frame = Instance.new("Frame")
-frame.Size = UDim2.new(0, 260, 0, 200)  -- wider for big buttons
-frame.Position = UDim2.new(0.8, -280, 0.3, 0)
+frame.Size = UDim2.new(0, 280, 0, 230)  -- taller for extra labels
+frame.Position = UDim2.new(0.8, -300, 0.3, 0)
 frame.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
 frame.BackgroundTransparency = 0.15
 frame.BorderSizePixel = 3
@@ -45,9 +45,9 @@ title.TextScaled = true
 title.Font = Enum.Font.GothamBold
 title.Parent = frame
 
--- MAIN TOGGLE (START/STOP) – BIG GREEN/RED
+-- MAIN TOGGLE
 local toggleBtn = Instance.new("TextButton")
-toggleBtn.Size = UDim2.new(0.85, 0, 0, 50)
+toggleBtn.Size = UDim2.new(0.85, 0, 0, 45)
 toggleBtn.Position = UDim2.new(0.075, 0, 0.25, 0)
 toggleBtn.BackgroundColor3 = Color3.fromRGB(0, 200, 0)
 toggleBtn.Text = "▶ START FARMING"
@@ -56,10 +56,10 @@ toggleBtn.TextScaled = true
 toggleBtn.Font = Enum.Font.GothamBold
 toggleBtn.Parent = frame
 
--- CLIP TOGGLE – BIG RED/GREY
+-- CLIP TOGGLE
 local clipBtn = Instance.new("TextButton")
-clipBtn.Size = UDim2.new(0.4, 0, 0, 40)
-clipBtn.Position = UDim2.new(0.075, 0, 0.58, 0)
+clipBtn.Size = UDim2.new(0.4, 0, 0, 35)
+clipBtn.Position = UDim2.new(0.075, 0, 0.53, 0)
 clipBtn.BackgroundColor3 = Color3.fromRGB(80, 80, 80)
 clipBtn.Text = "CLIP OFF"
 clipBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
@@ -70,7 +70,7 @@ clipBtn.Parent = frame
 -- STATUS
 local status = Instance.new("TextLabel")
 status.Size = UDim2.new(0.5, 0, 0, 25)
-status.Position = UDim2.new(0.55, 0, 0.6, 0)
+status.Position = UDim2.new(0.55, 0, 0.55, 0)
 status.BackgroundTransparency = 1
 status.Text = "IDLE"
 status.TextColor3 = Color3.fromRGB(200, 200, 200)
@@ -78,24 +78,48 @@ status.TextScaled = true
 status.Font = Enum.Font.Gotham
 status.Parent = frame
 
--- COIN COUNTER
-local coinCounter = Instance.new("TextLabel")
-coinCounter.Size = UDim2.new(0.85, 0, 0, 25)
-coinCounter.Position = UDim2.new(0.075, 0, 0.8, 0)
-coinCounter.BackgroundTransparency = 1
-coinCounter.Text = "🪙 0"
-coinCounter.TextColor3 = Color3.fromRGB(100, 255, 100)
-coinCounter.TextScaled = true
-coinCounter.Font = Enum.Font.Gotham
-coinCounter.Parent = frame
+-- TOTAL COINS (lifetime)
+local totalCoinLabel = Instance.new("TextLabel")
+totalCoinLabel.Size = UDim2.new(0.4, 0, 0, 20)
+totalCoinLabel.Position = UDim2.new(0.075, 0, 0.75, 0)
+totalCoinLabel.BackgroundTransparency = 1
+totalCoinLabel.Text = "Total: 0"
+totalCoinLabel.TextColor3 = Color3.fromRGB(100, 255, 100)
+totalCoinLabel.TextScaled = true
+totalCoinLabel.Font = Enum.Font.Gotham
+totalCoinLabel.Parent = frame
+
+-- ROUND COINS
+local roundCoinLabel = Instance.new("TextLabel")
+roundCoinLabel.Size = UDim2.new(0.4, 0, 0, 20)
+roundCoinLabel.Position = UDim2.new(0.55, 0, 0.75, 0)
+roundCoinLabel.BackgroundTransparency = 1
+roundCoinLabel.Text = "Round: 0/40"
+roundCoinLabel.TextColor3 = Color3.fromRGB(255, 255, 100)
+roundCoinLabel.TextScaled = true
+roundCoinLabel.Font = Enum.Font.Gotham
+roundCoinLabel.Parent = frame
+
+-- CAP REACHED MESSAGE
+local capMsg = Instance.new("TextLabel")
+capMsg.Size = UDim2.new(0.85, 0, 0, 20)
+capMsg.Position = UDim2.new(0.075, 0, 0.88, 0)
+capMsg.BackgroundTransparency = 1
+capMsg.Text = ""
+capMsg.TextColor3 = Color3.fromRGB(255, 0, 0)
+capMsg.TextScaled = true
+capMsg.Font = Enum.Font.GothamBold
+capMsg.Parent = frame
 
 -- ========== CORE LOGIC ==========
 local isFarming = false
 local isClipping = false
 local farmThread = nil
-local currentCoins = 0
+local totalCoins = 0
+local roundCoins = 0   -- resets each round
+local maxCoins = MAX_COINS_PER_ROUND
 
--- Store original CanCollide for restoring
+-- Store original CanCollide
 local originalCollisions = {}
 
 local function SetClip(enable)
@@ -120,16 +144,20 @@ local function SetClip(enable)
     end
 end
 
--- Reapply clip on respawn
+-- Reset round counter on respawn (round end)
 LocalPlayer.CharacterAdded:Connect(function(newChar)
     Character = newChar
     Humanoid = newChar:WaitForChild("Humanoid")
     Root = newChar:WaitForChild("HumanoidRootPart")
     originalCollisions = {}
+    -- Reset round coins
+    roundCoins = 0
+    roundCoinLabel.Text = "Round: 0/" .. maxCoins
+    capMsg.Text = ""
     if isClipping then SetClip(true) end
 end)
 
--- Coin detection (aggressive but safe)
+-- Coin detection
 local function GetCoins()
     local coins = {}
     for _, v in ipairs(workspace:GetDescendants()) do
@@ -146,22 +174,25 @@ local function GetCoins()
     return coins
 end
 
--- Movement (no wall check if clipping is enabled)
+-- Movement (with wall check unless clipping)
 local function MoveToCoin(targetPos)
     if not Root or not Root.Parent then RefreshCharacter() end
     if not Root then return end
 
-    -- If not clipping, do a simple raycast to skip unreachable coins (prevents stuck attempts)
+    -- Skip if we already reached the round cap
+    if roundCoins >= maxCoins then
+        return
+    end
+
     if not isClipping then
         local direction = (targetPos - Root.Position).Unit
         local ray = Ray.new(Root.Position + Vector3.new(0, 1, 0), direction * 8)
         local hit = workspace:FindPartOnRay(ray, Character)
         if hit and hit:IsA("BasePart") and hit.CanCollide then
-            return  -- skip this coin, wall in the way
+            return
         end
     end
 
-    -- Small random offset to look human (but very small)
     local offsetX = (math.random() - 0.5) * 0.8
     local offsetZ = (math.random() - 0.5) * 0.8
     local offsetTarget = targetPos + Vector3.new(offsetX, 0, offsetZ)
@@ -169,7 +200,6 @@ local function MoveToCoin(targetPos)
     local currentPos = Root.Position
     local distance = (offsetTarget - currentPos).Magnitude
     if distance < 1.5 then
-        -- Walk the last bit
         Humanoid:MoveTo(targetPos)
         task.wait(0.15)
         return
@@ -191,7 +221,7 @@ local function MoveToCoin(targetPos)
     task.wait(0.02)
 end
 
--- Main farming loop
+-- Main loop
 local function FarmLoop()
     while isFarming do
         if not Root or not Root.Parent then
@@ -200,13 +230,22 @@ local function FarmLoop()
             continue
         end
 
+        -- Check if round cap reached
+        if roundCoins >= maxCoins then
+            capMsg.Text = "ROUND CAP REACHED (40)"
+            task.wait(0.5)
+            continue
+        else
+            capMsg.Text = ""
+        end
+
         local coins = GetCoins()
         if #coins == 0 then
             task.wait(0.3)
             continue
         end
 
-        -- Find closest coin
+        -- Find closest
         local closestCoin = nil
         local closestDist = math.huge
         for _, coin in ipairs(coins) do
@@ -218,8 +257,11 @@ local function FarmLoop()
         end
         if closestCoin then
             MoveToCoin(closestCoin.Position)
-            currentCoins = currentCoins + 1
-            coinCounter.Text = "🪙 " .. currentCoins
+            -- Increment counters (we assume collection succeeded)
+            totalCoins = totalCoins + 1
+            roundCoins = roundCoins + 1
+            totalCoinLabel.Text = "Total: " .. totalCoins
+            roundCoinLabel.Text = "Round: " .. roundCoins .. "/" .. maxCoins
         end
         task.wait(0.1)
     end
@@ -233,6 +275,7 @@ local function ToggleFarming()
         toggleBtn.BackgroundColor3 = Color3.fromRGB(200, 0, 0)
         status.Text = "COLLECTING"
         status.TextColor3 = Color3.fromRGB(0, 255, 0)
+        -- Reset round counter on new farm start? We'll keep it as is (reset on respawn)
         if isClipping then SetClip(true) end
         if farmThread then coroutine.close(farmThread) end
         farmThread = coroutine.create(FarmLoop)
@@ -247,20 +290,13 @@ local function ToggleFarming()
     end
 end
 
--- Toggle clip
 local function ToggleClip()
     SetClip(not isClipping)
-    -- If farming is active, apply change immediately
-    if isFarming then
-        -- No extra action needed, SetClip already updates parts
-    end
 end
 
--- Button connections
 toggleBtn.MouseButton1Click:Connect(ToggleFarming)
 clipBtn.MouseButton1Click:Connect(ToggleClip)
 
--- Cleanup
 screenGui.AncestryChanged:Connect(function()
     if not screenGui.Parent then
         isFarming = false
