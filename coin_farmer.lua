@@ -1,16 +1,16 @@
--- MM2 Coin Farmer - CLIP MODE EDITION (you asked for it)
-local SPEED = 25  -- adjust as needed, but higher = more kicks
-local CLIP_ENABLED = false  -- default off; toggle via GUI
+-- MM2 Coin Farmer - MOBILE EDITION (safe, no kicks)
+local SPEED = 16  -- NORMAL WALKING SPEED – DO NOT INCREASE UNLESS YOU WANT BANS
+local CLIP_ENABLED = false  -- CLIPPING IS OFF BY DEFAULT – TURN ON ONLY FOR STUCK COINS
 
 local Players = game:GetService("Players")
 local TweenService = game:GetService("TweenService")
-local UserInputService = game:GetService("UserInputService")
 local LocalPlayer = Players.LocalPlayer
+
+-- Character references (updated on respawn)
 local Character = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
 local Humanoid = Character:WaitForChild("Humanoid")
 local Root = Character:WaitForChild("HumanoidRootPart")
 
--- Refresh on respawn
 local function RefreshCharacter()
     Character = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
     Humanoid = Character:WaitForChild("Humanoid")
@@ -18,100 +18,99 @@ local function RefreshCharacter()
 end
 LocalPlayer.CharacterAdded:Connect(RefreshCharacter)
 
--- ===== GUI =====
+-- ========== GUI (BIG BUTTONS FOR PHONES) ==========
 local screenGui = Instance.new("ScreenGui")
 screenGui.Name = "CoinFarmerGUI"
 screenGui.ResetOnSpawn = false
 screenGui.Parent = LocalPlayer:WaitForChild("PlayerGui") or game:GetService("CoreGui")
 
 local frame = Instance.new("Frame")
-frame.Size = UDim2.new(0, 220, 0, 190)  -- taller for clip toggle
-frame.Position = UDim2.new(0.8, -240, 0.3, 0)
-frame.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
-frame.BackgroundTransparency = 0.2
-frame.BorderSizePixel = 2
-frame.BorderColor3 = Color3.fromRGB(255, 0, 0)
+frame.Size = UDim2.new(0, 260, 0, 200)  -- wider for big buttons
+frame.Position = UDim2.new(0.8, -280, 0.3, 0)
+frame.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
+frame.BackgroundTransparency = 0.15
+frame.BorderSizePixel = 3
+frame.BorderColor3 = Color3.fromRGB(255, 100, 0)
 frame.Active = true
 frame.Draggable = true
 frame.Parent = screenGui
 
 local title = Instance.new("TextLabel")
-title.Size = UDim2.new(1, 0, 0, 25)
+title.Size = UDim2.new(1, 0, 0, 30)
 title.Position = UDim2.new(0, 0, 0, 0)
 title.BackgroundTransparency = 1
-title.Text = "COIN FARMER (F TOGGLE)"
-title.TextColor3 = Color3.fromRGB(255, 200, 100)
+title.Text = "COIN FARMER"
+title.TextColor3 = Color3.fromRGB(255, 200, 50)
 title.TextScaled = true
 title.Font = Enum.Font.GothamBold
 title.Parent = frame
 
+-- MAIN TOGGLE (START/STOP) – BIG GREEN/RED
 local toggleBtn = Instance.new("TextButton")
-toggleBtn.Size = UDim2.new(0.8, 0, 0, 35)
-toggleBtn.Position = UDim2.new(0.1, 0, 0.25, 0)
+toggleBtn.Size = UDim2.new(0.85, 0, 0, 50)
+toggleBtn.Position = UDim2.new(0.075, 0, 0.25, 0)
 toggleBtn.BackgroundColor3 = Color3.fromRGB(0, 200, 0)
-toggleBtn.Text = "START FARMING"
+toggleBtn.Text = "▶ START FARMING"
 toggleBtn.TextColor3 = Color3.fromRGB(0, 0, 0)
 toggleBtn.TextScaled = true
 toggleBtn.Font = Enum.Font.GothamBold
 toggleBtn.Parent = frame
 
--- Clip toggle (checkbox style)
+-- CLIP TOGGLE – BIG RED/GREY
 local clipBtn = Instance.new("TextButton")
-clipBtn.Size = UDim2.new(0.4, 0, 0, 25)
-clipBtn.Position = UDim2.new(0.1, 0, 0.55, 0)
-clipBtn.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+clipBtn.Size = UDim2.new(0.4, 0, 0, 40)
+clipBtn.Position = UDim2.new(0.075, 0, 0.58, 0)
+clipBtn.BackgroundColor3 = Color3.fromRGB(80, 80, 80)
 clipBtn.Text = "CLIP OFF"
 clipBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
 clipBtn.TextScaled = true
 clipBtn.Font = Enum.Font.Gotham
 clipBtn.Parent = frame
 
+-- STATUS
 local status = Instance.new("TextLabel")
-status.Size = UDim2.new(0.8, 0, 0, 20)
-status.Position = UDim2.new(0.1, 0, 0.7, 0)
+status.Size = UDim2.new(0.5, 0, 0, 25)
+status.Position = UDim2.new(0.55, 0, 0.6, 0)
 status.BackgroundTransparency = 1
-status.Text = "Status: IDLE"
+status.Text = "IDLE"
 status.TextColor3 = Color3.fromRGB(200, 200, 200)
 status.TextScaled = true
 status.Font = Enum.Font.Gotham
 status.Parent = frame
 
+-- COIN COUNTER
 local coinCounter = Instance.new("TextLabel")
-coinCounter.Size = UDim2.new(0.8, 0, 0, 20)
-coinCounter.Position = UDim2.new(0.1, 0, 0.82, 0)
+coinCounter.Size = UDim2.new(0.85, 0, 0, 25)
+coinCounter.Position = UDim2.new(0.075, 0, 0.8, 0)
 coinCounter.BackgroundTransparency = 1
-coinCounter.Text = "Coins: 0"
+coinCounter.Text = "🪙 0"
 coinCounter.TextColor3 = Color3.fromRGB(100, 255, 100)
 coinCounter.TextScaled = true
 coinCounter.Font = Enum.Font.Gotham
 coinCounter.Parent = frame
 
--- ===== CORE LOGIC =====
+-- ========== CORE LOGIC ==========
 local isFarming = false
 local isClipping = false
 local farmThread = nil
 local currentCoins = 0
 
--- Store original collision states to restore
+-- Store original CanCollide for restoring
 local originalCollisions = {}
 
--- Function to toggle clipping on/off
 local function SetClip(enable)
     isClipping = enable
     clipBtn.Text = enable and "CLIP ON" or "CLIP OFF"
-    clipBtn.BackgroundColor3 = enable and Color3.fromRGB(200, 0, 0) or Color3.fromRGB(60, 60, 60)
-    -- Set CanCollide on all character parts
+    clipBtn.BackgroundColor3 = enable and Color3.fromRGB(200, 0, 0) or Color3.fromRGB(80, 80, 80)
     if Character then
         for _, part in ipairs(Character:GetDescendants()) do
             if part:IsA("BasePart") then
                 if enable then
-                    -- Store original only once
                     if originalCollisions[part] == nil then
                         originalCollisions[part] = part.CanCollide
                     end
                     part.CanCollide = false
                 else
-                    -- Restore original if stored
                     if originalCollisions[part] ~= nil then
                         part.CanCollide = originalCollisions[part]
                     end
@@ -121,18 +120,16 @@ local function SetClip(enable)
     end
 end
 
--- On character respawn, reapply clip state if enabled
+-- Reapply clip on respawn
 LocalPlayer.CharacterAdded:Connect(function(newChar)
     Character = newChar
     Humanoid = newChar:WaitForChild("Humanoid")
     Root = newChar:WaitForChild("HumanoidRootPart")
     originalCollisions = {}
-    if isClipping then
-        SetClip(true)
-    end
+    if isClipping then SetClip(true) end
 end)
 
--- Coin detection (same aggressive)
+-- Coin detection (aggressive but safe)
 local function GetCoins()
     local coins = {}
     for _, v in ipairs(workspace:GetDescendants()) do
@@ -149,32 +146,32 @@ local function GetCoins()
     return coins
 end
 
--- Movement with optional clipping (no raycast if clipping)
+-- Movement (no wall check if clipping is enabled)
 local function MoveToCoin(targetPos)
     if not Root or not Root.Parent then RefreshCharacter() end
     if not Root then return end
 
-    -- If clipping, we don't care about walls; if not, we skip coins behind walls
+    -- If not clipping, do a simple raycast to skip unreachable coins (prevents stuck attempts)
     if not isClipping then
-        -- Simple raycast to check if a wall is in the way
         local direction = (targetPos - Root.Position).Unit
-        local ray = Ray.new(Root.Position, direction * 10)
+        local ray = Ray.new(Root.Position + Vector3.new(0, 1, 0), direction * 8)
         local hit = workspace:FindPartOnRay(ray, Character)
         if hit and hit:IsA("BasePart") and hit.CanCollide then
-            return  -- skip this coin
+            return  -- skip this coin, wall in the way
         end
     end
 
-    -- Random offset to look human (still applies)
-    local offsetX = (math.random() - 0.5) * 1.5 * 2
-    local offsetZ = (math.random() - 0.5) * 1.5 * 2
+    -- Small random offset to look human (but very small)
+    local offsetX = (math.random() - 0.5) * 0.8
+    local offsetZ = (math.random() - 0.5) * 0.8
     local offsetTarget = targetPos + Vector3.new(offsetX, 0, offsetZ)
 
     local currentPos = Root.Position
     local distance = (offsetTarget - currentPos).Magnitude
-    if distance < 1 then
+    if distance < 1.5 then
+        -- Walk the last bit
         Humanoid:MoveTo(targetPos)
-        task.wait(0.2)
+        task.wait(0.15)
         return
     end
 
@@ -194,7 +191,7 @@ local function MoveToCoin(targetPos)
     task.wait(0.02)
 end
 
--- Farm loop
+-- Main farming loop
 local function FarmLoop()
     while isFarming do
         if not Root or not Root.Parent then
@@ -209,6 +206,7 @@ local function FarmLoop()
             continue
         end
 
+        -- Find closest coin
         local closestCoin = nil
         local closestDist = math.huge
         for _, coin in ipairs(coins) do
@@ -221,7 +219,7 @@ local function FarmLoop()
         if closestCoin then
             MoveToCoin(closestCoin.Position)
             currentCoins = currentCoins + 1
-            coinCounter.Text = "Coins: " .. currentCoins
+            coinCounter.Text = "🪙 " .. currentCoins
         end
         task.wait(0.1)
     end
@@ -231,50 +229,36 @@ end
 local function ToggleFarming()
     isFarming = not isFarming
     if isFarming then
-        toggleBtn.Text = "STOP FARMING"
+        toggleBtn.Text = "⏹ STOP FARMING"
         toggleBtn.BackgroundColor3 = Color3.fromRGB(200, 0, 0)
-        status.Text = "Status: COLLECTING"
+        status.Text = "COLLECTING"
         status.TextColor3 = Color3.fromRGB(0, 255, 0)
-        -- If clip is on, apply it now
         if isClipping then SetClip(true) end
         if farmThread then coroutine.close(farmThread) end
         farmThread = coroutine.create(FarmLoop)
         coroutine.resume(farmThread)
     else
-        toggleBtn.Text = "START FARMING"
+        toggleBtn.Text = "▶ START FARMING"
         toggleBtn.BackgroundColor3 = Color3.fromRGB(0, 200, 0)
-        status.Text = "Status: IDLE"
+        status.Text = "IDLE"
         status.TextColor3 = Color3.fromRGB(200, 200, 200)
-        -- Restore collisions when stopping
         if isClipping then SetClip(false) end
         farmThread = nil
     end
 end
 
--- Toggle clip mode (does not start/stop farming)
+-- Toggle clip
 local function ToggleClip()
-    -- Only change if not farming, or allow toggling on the fly (risky)
     SetClip(not isClipping)
-    -- If currently farming, we need to update state immediately
-    if isFarming and isClipping then
-        -- Ensure all parts are noclipped
-        SetClip(true)
-    elseif isFarming and not isClipping then
-        -- Restore collisions while still farming
-        SetClip(false)
+    -- If farming is active, apply change immediately
+    if isFarming then
+        -- No extra action needed, SetClip already updates parts
     end
 end
 
--- Button events
+-- Button connections
 toggleBtn.MouseButton1Click:Connect(ToggleFarming)
 clipBtn.MouseButton1Click:Connect(ToggleClip)
-
--- Hotkey: F for farming, C for clip toggle
-UserInputService.InputBegan:Connect(function(input, gameProcessed)
-    if gameProcessed then return end
-    if input.KeyCode == Enum.KeyCode.F then ToggleFarming() end
-    if input.KeyCode == Enum.KeyCode.C then ToggleClip() end
-end)
 
 -- Cleanup
 screenGui.AncestryChanged:Connect(function()
