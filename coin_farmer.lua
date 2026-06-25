@@ -1,12 +1,11 @@
--- MM2 Coin Farmer - ROUND DETECTION + 40 COIN CAP
-local SPEED = 16  -- normal walking speed – safe
-local MAX_COINS_PER_ROUND = 40  -- stop collecting after this many coins in a round
+-- MM2 Coin Farmer - PROPER COIN DETECTION
+local SPEED = 16
+local MAX_COINS_PER_ROUND = 40
 
 local Players = game:GetService("Players")
 local TweenService = game:GetService("TweenService")
 local LocalPlayer = Players.LocalPlayer
 
--- Character references
 local Character = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
 local Humanoid = Character:WaitForChild("Humanoid")
 local Root = Character:WaitForChild("HumanoidRootPart")
@@ -18,6 +17,41 @@ local function RefreshCharacter()
 end
 LocalPlayer.CharacterAdded:Connect(RefreshCharacter)
 
+-- ========== PROPER COIN TRACKING ==========
+local CoinList = {}  -- Dynamic coin list
+
+-- Initial scan for coins
+local function ScanCoins()
+    CoinList = {}
+    for _, obj in ipairs(workspace:GetDescendants()) do
+        if obj:IsA("BasePart") and obj.Name == "Coin_Server" then
+            table.insert(CoinList, obj)
+        end
+    end
+end
+
+-- Listen for new coins spawning
+workspace.DescendantAdded:Connect(function(obj)
+    if obj:IsA("BasePart") and obj.Name == "Coin_Server" then
+        table.insert(CoinList, obj)
+    end
+end)
+
+-- Listen for coins being removed
+workspace.DescendantRemoving:Connect(function(obj)
+    if obj:IsA("BasePart") and obj.Name == "Coin_Server" then
+        for i, coin in ipairs(CoinList) do
+            if coin == obj then
+                table.remove(CoinList, i)
+                break
+            end
+        end
+    end
+end)
+
+-- Initial scan
+ScanCoins()
+
 -- ========== GUI ==========
 local screenGui = Instance.new("ScreenGui")
 screenGui.Name = "CoinFarmerGUI"
@@ -25,7 +59,7 @@ screenGui.ResetOnSpawn = false
 screenGui.Parent = LocalPlayer:WaitForChild("PlayerGui") or game:GetService("CoreGui")
 
 local frame = Instance.new("Frame")
-frame.Size = UDim2.new(0, 280, 0, 230)  -- taller for extra labels
+frame.Size = UDim2.new(0, 280, 0, 230)
 frame.Position = UDim2.new(0.8, -300, 0.3, 0)
 frame.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
 frame.BackgroundTransparency = 0.15
@@ -45,7 +79,6 @@ title.TextScaled = true
 title.Font = Enum.Font.GothamBold
 title.Parent = frame
 
--- MAIN TOGGLE
 local toggleBtn = Instance.new("TextButton")
 toggleBtn.Size = UDim2.new(0.85, 0, 0, 45)
 toggleBtn.Position = UDim2.new(0.075, 0, 0.25, 0)
@@ -56,7 +89,6 @@ toggleBtn.TextScaled = true
 toggleBtn.Font = Enum.Font.GothamBold
 toggleBtn.Parent = frame
 
--- CLIP TOGGLE
 local clipBtn = Instance.new("TextButton")
 clipBtn.Size = UDim2.new(0.4, 0, 0, 35)
 clipBtn.Position = UDim2.new(0.075, 0, 0.53, 0)
@@ -67,7 +99,6 @@ clipBtn.TextScaled = true
 clipBtn.Font = Enum.Font.Gotham
 clipBtn.Parent = frame
 
--- STATUS
 local status = Instance.new("TextLabel")
 status.Size = UDim2.new(0.5, 0, 0, 25)
 status.Position = UDim2.new(0.55, 0, 0.55, 0)
@@ -78,7 +109,6 @@ status.TextScaled = true
 status.Font = Enum.Font.Gotham
 status.Parent = frame
 
--- TOTAL COINS (lifetime)
 local totalCoinLabel = Instance.new("TextLabel")
 totalCoinLabel.Size = UDim2.new(0.4, 0, 0, 20)
 totalCoinLabel.Position = UDim2.new(0.075, 0, 0.75, 0)
@@ -89,7 +119,6 @@ totalCoinLabel.TextScaled = true
 totalCoinLabel.Font = Enum.Font.Gotham
 totalCoinLabel.Parent = frame
 
--- ROUND COINS
 local roundCoinLabel = Instance.new("TextLabel")
 roundCoinLabel.Size = UDim2.new(0.4, 0, 0, 20)
 roundCoinLabel.Position = UDim2.new(0.55, 0, 0.75, 0)
@@ -100,7 +129,6 @@ roundCoinLabel.TextScaled = true
 roundCoinLabel.Font = Enum.Font.Gotham
 roundCoinLabel.Parent = frame
 
--- CAP REACHED MESSAGE
 local capMsg = Instance.new("TextLabel")
 capMsg.Size = UDim2.new(0.85, 0, 0, 20)
 capMsg.Position = UDim2.new(0.075, 0, 0.88, 0)
@@ -116,10 +144,9 @@ local isFarming = false
 local isClipping = false
 local farmThread = nil
 local totalCoins = 0
-local roundCoins = 0   -- resets each round
+local roundCoins = 0
 local maxCoins = MAX_COINS_PER_ROUND
 
--- Store original CanCollide
 local originalCollisions = {}
 
 local function SetClip(enable)
@@ -144,52 +171,41 @@ local function SetClip(enable)
     end
 end
 
--- Reset round counter on respawn (round end)
+-- Reset round counter on respawn
 LocalPlayer.CharacterAdded:Connect(function(newChar)
     Character = newChar
     Humanoid = newChar:WaitForChild("Humanoid")
     Root = newChar:WaitForChild("HumanoidRootPart")
     originalCollisions = {}
-    -- Reset round coins
     roundCoins = 0
     roundCoinLabel.Text = "Round: 0/" .. maxCoins
     capMsg.Text = ""
     if isClipping then SetClip(true) end
 end)
 
--- Coin detection
-local function GetCoins()
-    local coins = {}
-    for _, v in ipairs(workspace:GetDescendants()) do
-        if v:IsA("BasePart") and v:FindFirstChild("TouchInterest") then
-            local name = v.Name:lower()
-            if name:find("coin") or name:find("money") or name:find("collect") or
-               (v.Parent and v.Parent.Name:lower():find("coin")) then
-                table.insert(coins, v)
-            elseif v:FindFirstChild("CoinTag") or v:FindFirstChild("Collectible") then
-                table.insert(coins, v)
-            end
-        end
+-- ========== MOVEMENT ==========
+local function MoveToCoin(coin)
+    -- CRITICAL FIX: Check if the coin still exists before moving
+    if not coin or not coin.Parent then
+        return false  -- Coin is gone, tell the loop to skip it
     end
-    return coins
-end
-
--- Movement (with wall check unless clipping)
-local function MoveToCoin(targetPos)
+    
     if not Root or not Root.Parent then RefreshCharacter() end
-    if not Root then return end
+    if not Root then return false end
 
-    -- Skip if we already reached the round cap
     if roundCoins >= maxCoins then
-        return
+        return false
     end
 
+    local targetPos = coin.Position
+    
+    -- Wall check if not clipping
     if not isClipping then
         local direction = (targetPos - Root.Position).Unit
         local ray = Ray.new(Root.Position + Vector3.new(0, 1, 0), direction * 8)
         local hit = workspace:FindPartOnRay(ray, Character)
         if hit and hit:IsA("BasePart") and hit.CanCollide then
-            return
+            return false  -- Wall in the way, skip this coin
         end
     end
 
@@ -202,7 +218,7 @@ local function MoveToCoin(targetPos)
     if distance < 1.5 then
         Humanoid:MoveTo(targetPos)
         task.wait(0.15)
-        return
+        return true
     end
 
     local duration = math.max(0.05, distance / SPEED)
@@ -219,9 +235,10 @@ local function MoveToCoin(targetPos)
         task.wait(0.1)
     end
     task.wait(0.02)
+    return true
 end
 
--- Main loop
+-- ========== FARM LOOP ==========
 local function FarmLoop()
     while isFarming do
         if not Root or not Root.Parent then
@@ -230,44 +247,48 @@ local function FarmLoop()
             continue
         end
 
-        -- Check if round cap reached
         if roundCoins >= maxCoins then
-            capMsg.Text = "ROUND CAP REACHED (40)"
+            capMsg.Text = "ROUND CAP REACHED (" .. maxCoins .. ")"
             task.wait(0.5)
             continue
         else
             capMsg.Text = ""
         end
 
-        local coins = GetCoins()
-        if #coins == 0 then
+        -- Use the dynamic CoinList instead of scanning each time
+        if #CoinList == 0 then
             task.wait(0.3)
             continue
         end
 
-        -- Find closest
+        -- Find closest VALID coin
         local closestCoin = nil
         local closestDist = math.huge
-        for _, coin in ipairs(coins) do
-            local dist = (Root.Position - coin.Position).Magnitude
-            if dist < closestDist then
-                closestDist = dist
-                closestCoin = coin
+        for _, coin in ipairs(CoinList) do
+            -- CRITICAL FIX: Skip coins that no longer exist
+            if coin and coin.Parent and coin:IsA("BasePart") then
+                local dist = (Root.Position - coin.Position).Magnitude
+                if dist < closestDist then
+                    closestDist = dist
+                    closestCoin = coin
+                end
             end
         end
+        
         if closestCoin then
-            MoveToCoin(closestCoin.Position)
-            -- Increment counters (we assume collection succeeded)
-            totalCoins = totalCoins + 1
-            roundCoins = roundCoins + 1
-            totalCoinLabel.Text = "Total: " .. totalCoins
-            roundCoinLabel.Text = "Round: " .. roundCoins .. "/" .. maxCoins
+            local success = MoveToCoin(closestCoin)
+            if success then
+                totalCoins = totalCoins + 1
+                roundCoins = roundCoins + 1
+                totalCoinLabel.Text = "Total: " .. totalCoins
+                roundCoinLabel.Text = "Round: " .. roundCoins .. "/" .. maxCoins
+            end
         end
         task.wait(0.1)
     end
 end
 
--- Toggle farming
+-- ========== TOGGLE FUNCTIONS ==========
 local function ToggleFarming()
     isFarming = not isFarming
     if isFarming then
@@ -275,7 +296,6 @@ local function ToggleFarming()
         toggleBtn.BackgroundColor3 = Color3.fromRGB(200, 0, 0)
         status.Text = "COLLECTING"
         status.TextColor3 = Color3.fromRGB(0, 255, 0)
-        -- Reset round counter on new farm start? We'll keep it as is (reset on respawn)
         if isClipping then SetClip(true) end
         if farmThread then coroutine.close(farmThread) end
         farmThread = coroutine.create(FarmLoop)
