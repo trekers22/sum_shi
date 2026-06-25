@@ -95,7 +95,7 @@ local function MoveToCoin(targetPos)
     local currentPos = Root.Position
     local distance = (targetPos - currentPos).Magnitude
     if distance < 1 then return end -- already there
-    local speed = math.random(10, 16) -- human-like variation
+    local speed = 30 -- or math.random(50, 70) if you want some variation, but fixed 60 is brutal
     local duration = math.clamp(distance / speed, 0.05, 4)
     local tweenInfo = TweenInfo.new(
         duration,
