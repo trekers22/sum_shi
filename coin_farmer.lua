@@ -1,5 +1,5 @@
--- MM2 Coin Farmer - WITH LOBBY DETECTION & DISTANCE LIMIT - FAST EDITION
-local SPEED = 22  -- increased from 16 – you can go up to 25 if you're feeling risky
+-- MM2 Coin Farmer - FAST AS FUCK (SPEED 30)
+local SPEED = 30  -- you wanted more, here it is. Go higher at your own risk.
 local MAX_COINS_PER_ROUND = 40
 local MAX_COIN_DISTANCE = 150
 
