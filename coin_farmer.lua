@@ -1,6 +1,7 @@
--- MM2 Coin Farmer - FINAL WITH PROPER ROUND HANDLING
+-- MM2 Coin Farmer - WITH LOBBY DETECTION & DISTANCE LIMIT
 local SPEED = 16
 local MAX_COINS_PER_ROUND = 40
+local MAX_COIN_DISTANCE = 150  -- don't chase coins farther than this (prevents lobby flying)
 
 local Players = game:GetService("Players")
 local TweenService = game:GetService("TweenService")
@@ -28,7 +29,6 @@ local function ScanCoins()
     end
 end
 
--- Initial scan
 ScanCoins()
 
 workspace.DescendantAdded:Connect(function(obj)
@@ -48,17 +48,41 @@ workspace.DescendantRemoving:Connect(function(obj)
     end
 end)
 
--- ========== ROUND DETECTION ==========
-local function IsRoundActive()
-    -- Check if there are coins in the map - if yes, round is active
-    if #Coins > 0 then return true end
-    -- Check game state if available
-    local gameState = workspace:FindFirstChild("GameState") or game:GetService("ReplicatedStorage"):FindFirstChild("GameState")
-    if gameState then
-        return gameState.Value == "RoundActive" or gameState.Value == "Playing"
+-- ========== ROUND / LOBBY DETECTION ==========
+local function GetGameState()
+    local state = workspace:FindFirstChild("GameState")
+    if state then return state.Value end
+    state = game:GetService("ReplicatedStorage"):FindFirstChild("GameState")
+    if state then return state.Value end
+    return nil
+end
+
+local function IsInLobby()
+    -- If game state is explicitly "Lobby" or "Waiting"
+    local state = GetGameState()
+    if state == "Lobby" or state == "Waiting" then
+        return true
     end
-    -- Fallback: check if character is alive
-    return Humanoid and Humanoid.Health > 0
+    -- If there are no coins at all, probably lobby
+    if #Coins == 0 then
+        return true
+    end
+    -- If the closest coin is too far, we're not in a round
+    if Root then
+        local closestDist = math.huge
+        for _, coin in ipairs(Coins) do
+            if coin and coin.Parent then
+                local dist = (Root.Position - coin.Position).Magnitude
+                if dist < closestDist then
+                    closestDist = dist
+                end
+            end
+        end
+        if closestDist > MAX_COIN_DISTANCE then
+            return true
+        end
+    end
+    return false
 end
 
 -- ========== GUI ==========
@@ -152,7 +176,7 @@ local roundStatus = Instance.new("TextLabel")
 roundStatus.Size = UDim2.new(0.85, 0, 0, 20)
 roundStatus.Position = UDim2.new(0.075, 0, 0.9, 0)
 roundStatus.BackgroundTransparency = 1
-roundStatus.Text = "Round: WAITING"
+roundStatus.Text = "Status: LOBBY"
 roundStatus.TextColor3 = Color3.fromRGB(255, 200, 100)
 roundStatus.TextScaled = true
 roundStatus.Font = Enum.Font.Gotham
@@ -165,7 +189,6 @@ local farmThread = nil
 local totalCoins = 0
 local roundCoins = 0
 local maxCoins = MAX_COINS_PER_ROUND
-local isRoundActive = false
 
 local originalCollisions = {}
 
@@ -191,7 +214,7 @@ local function SetClip(enable)
     end
 end
 
--- CRITICAL FIX: Clear coin list and rescan on respawn
+-- Reset on respawn
 LocalPlayer.CharacterAdded:Connect(function(newChar)
     Character = newChar
     Humanoid = newChar:WaitForChild("Humanoid")
@@ -199,12 +222,9 @@ LocalPlayer.CharacterAdded:Connect(function(newChar)
     originalCollisions = {}
     roundCoins = 0
     roundCoinLabel.Text = "Round: 0/" .. maxCoins
-    -- Clear old coin list and rescan
     Coins = {}
     task.wait(0.5)
     ScanCoins()
-    isRoundActive = #Coins > 0
-    roundStatus.Text = isRoundActive and "Round: ACTIVE" or "Round: WAITING"
     if isClipping then SetClip(true) end
 end)
 
@@ -217,6 +237,10 @@ local function MoveToCoin(coin)
     if Humanoid.Health <= 0 then return false end
 
     local targetPos = coin.Position
+    local distance = (Root.Position - targetPos).Magnitude
+    if distance > MAX_COIN_DISTANCE then
+        return false  -- too far, skip
+    end
 
     if not isClipping then
         local direction = (targetPos - Root.Position).Unit
@@ -232,14 +256,14 @@ local function MoveToCoin(coin)
     local offsetTarget = targetPos + Vector3.new(offsetX, 0, offsetZ)
 
     local currentPos = Root.Position
-    local distance = (offsetTarget - currentPos).Magnitude
-    if distance < 1.5 then
+    local dist = (offsetTarget - currentPos).Magnitude
+    if dist < 1.5 then
         Humanoid:MoveTo(targetPos)
         task.wait(0.15)
         return true
     end
 
-    local duration = math.max(0.05, distance / SPEED)
+    local duration = math.max(0.05, dist / SPEED)
     local tweenInfo = TweenInfo.new(duration, Enum.EasingStyle.Linear, Enum.EasingDirection.Out)
     local goal = {CFrame = CFrame.new(offsetTarget + Vector3.new(0, 2, 0))}
     local tween = TweenService:Create(Root, tweenInfo, goal)
@@ -259,24 +283,22 @@ end
 -- ========== FARM LOOP ==========
 local function FarmLoop()
     while isFarming do
-        -- Check if character exists
+        -- Character checks
         if not Root or not Root.Parent then
             RefreshCharacter()
             task.wait(0.5)
             continue
         end
 
-        -- Check if dead
         if Humanoid.Health <= 0 then
             task.wait(0.5)
             continue
         end
 
-        -- Check if round is active (has coins)
-        isRoundActive = #Coins > 0
-        roundStatus.Text = isRoundActive and "Round: ACTIVE" or "Round: WAITING"
-
-        if not isRoundActive then
+        -- Lobby detection
+        local inLobby = IsInLobby()
+        roundStatus.Text = inLobby and "Status: LOBBY" or "Status: ROUND ACTIVE"
+        if inLobby then
             task.wait(0.3)
             continue
         end
@@ -286,7 +308,17 @@ local function FarmLoop()
             continue
         end
 
-        -- Update coin count display
+        -- Clean invalid coins from list
+        local invalid = {}
+        for i, coin in ipairs(Coins) do
+            if not coin or not coin.Parent or not coin:IsA("BasePart") then
+                table.insert(invalid, i)
+            end
+        end
+        for i = #invalid, 1, -1 do
+            table.remove(Coins, invalid[i])
+        end
+
         coinCountLabel.Text = "Coins in map: " .. #Coins
 
         if #Coins == 0 then
@@ -294,30 +326,28 @@ local function FarmLoop()
             continue
         end
 
-        -- Find closest coin
+        -- Find closest valid coin (also check distance)
         local closestCoin = nil
         local closestDist = math.huge
-        local invalidIndices = {}
-        for i, coin in ipairs(Coins) do
+        for _, coin in ipairs(Coins) do
             if coin and coin.Parent and coin:IsA("BasePart") then
                 local dist = (Root.Position - coin.Position).Magnitude
                 if dist < closestDist then
                     closestDist = dist
                     closestCoin = coin
                 end
-            else
-                table.insert(invalidIndices, i)
             end
-        end
-        -- Remove invalid coins
-        for i = #invalidIndices, 1, -1 do
-            table.remove(Coins, invalidIndices[i])
         end
 
         if closestCoin then
+            -- If closest coin is too far, we're in lobby - skip
+            if closestDist > MAX_COIN_DISTANCE then
+                task.wait(0.3)
+                continue
+            end
             local success = MoveToCoin(closestCoin)
             if success then
-                -- Remove this coin from list
+                -- Remove from list
                 for i, coin in ipairs(Coins) do
                     if coin == closestCoin then
                         table.remove(Coins, i)
