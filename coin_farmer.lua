@@ -1,4 +1,4 @@
--- MM2 Coin Farmer - PROPER COIN DETECTION
+-- MM2 Coin Farmer - Based on working examples
 local SPEED = 16
 local MAX_COINS_PER_ROUND = 40
 
@@ -18,39 +18,33 @@ end
 LocalPlayer.CharacterAdded:Connect(RefreshCharacter)
 
 -- ========== PROPER COIN TRACKING ==========
-local CoinList = {}  -- Dynamic coin list
+local Coins = {}  -- Dynamic coin list
 
--- Initial scan for coins
-local function ScanCoins()
-    CoinList = {}
-    for _, obj in ipairs(workspace:GetDescendants()) do
-        if obj:IsA("BasePart") and obj.Name == "Coin_Server" then
-            table.insert(CoinList, obj)
-        end
+-- Initial scan: look for EXACT "Coin_Server" name
+for _, obj in ipairs(workspace:GetDescendants()) do
+    if obj:IsA("BasePart") and obj.Name == "Coin_Server" then
+        table.insert(Coins, obj)
     end
 end
 
 -- Listen for new coins spawning
 workspace.DescendantAdded:Connect(function(obj)
     if obj:IsA("BasePart") and obj.Name == "Coin_Server" then
-        table.insert(CoinList, obj)
+        table.insert(Coins, obj)
     end
 end)
 
 -- Listen for coins being removed
 workspace.DescendantRemoving:Connect(function(obj)
     if obj:IsA("BasePart") and obj.Name == "Coin_Server" then
-        for i, coin in ipairs(CoinList) do
+        for i, coin in ipairs(Coins) do
             if coin == obj then
-                table.remove(CoinList, i)
+                table.remove(Coins, i)
                 break
             end
         end
     end
 end)
-
--- Initial scan
-ScanCoins()
 
 -- ========== GUI ==========
 local screenGui = Instance.new("ScreenGui")
@@ -81,7 +75,7 @@ title.Parent = frame
 
 local toggleBtn = Instance.new("TextButton")
 toggleBtn.Size = UDim2.new(0.85, 0, 0, 45)
-toggleBtn.Position = UDim2.new(0.075, 0, 0.25, 0)
+toggleBtn.Position = UDim2.new(0.075, 0, 0.2, 0)
 toggleBtn.BackgroundColor3 = Color3.fromRGB(0, 200, 0)
 toggleBtn.Text = "▶ START FARMING"
 toggleBtn.TextColor3 = Color3.fromRGB(0, 0, 0)
@@ -91,7 +85,7 @@ toggleBtn.Parent = frame
 
 local clipBtn = Instance.new("TextButton")
 clipBtn.Size = UDim2.new(0.4, 0, 0, 35)
-clipBtn.Position = UDim2.new(0.075, 0, 0.53, 0)
+clipBtn.Position = UDim2.new(0.075, 0, 0.45, 0)
 clipBtn.BackgroundColor3 = Color3.fromRGB(80, 80, 80)
 clipBtn.Text = "CLIP OFF"
 clipBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
@@ -100,8 +94,8 @@ clipBtn.Font = Enum.Font.Gotham
 clipBtn.Parent = frame
 
 local status = Instance.new("TextLabel")
-status.Size = UDim2.new(0.5, 0, 0, 25)
-status.Position = UDim2.new(0.55, 0, 0.55, 0)
+status.Size = UDim2.new(0.8, 0, 0, 20)
+status.Position = UDim2.new(0.1, 0, 0.6, 0)
 status.BackgroundTransparency = 1
 status.Text = "IDLE"
 status.TextColor3 = Color3.fromRGB(200, 200, 200)
@@ -111,7 +105,7 @@ status.Parent = frame
 
 local totalCoinLabel = Instance.new("TextLabel")
 totalCoinLabel.Size = UDim2.new(0.4, 0, 0, 20)
-totalCoinLabel.Position = UDim2.new(0.075, 0, 0.75, 0)
+totalCoinLabel.Position = UDim2.new(0.075, 0, 0.72, 0)
 totalCoinLabel.BackgroundTransparency = 1
 totalCoinLabel.Text = "Total: 0"
 totalCoinLabel.TextColor3 = Color3.fromRGB(100, 255, 100)
@@ -121,7 +115,7 @@ totalCoinLabel.Parent = frame
 
 local roundCoinLabel = Instance.new("TextLabel")
 roundCoinLabel.Size = UDim2.new(0.4, 0, 0, 20)
-roundCoinLabel.Position = UDim2.new(0.55, 0, 0.75, 0)
+roundCoinLabel.Position = UDim2.new(0.55, 0, 0.72, 0)
 roundCoinLabel.BackgroundTransparency = 1
 roundCoinLabel.Text = "Round: 0/40"
 roundCoinLabel.TextColor3 = Color3.fromRGB(255, 255, 100)
@@ -129,15 +123,15 @@ roundCoinLabel.TextScaled = true
 roundCoinLabel.Font = Enum.Font.Gotham
 roundCoinLabel.Parent = frame
 
-local capMsg = Instance.new("TextLabel")
-capMsg.Size = UDim2.new(0.85, 0, 0, 20)
-capMsg.Position = UDim2.new(0.075, 0, 0.88, 0)
-capMsg.BackgroundTransparency = 1
-capMsg.Text = ""
-capMsg.TextColor3 = Color3.fromRGB(255, 0, 0)
-capMsg.TextScaled = true
-capMsg.Font = Enum.Font.GothamBold
-capMsg.Parent = frame
+local coinCountLabel = Instance.new("TextLabel")
+coinCountLabel.Size = UDim2.new(0.85, 0, 0, 20)
+coinCountLabel.Position = UDim2.new(0.075, 0, 0.85, 0)
+coinCountLabel.BackgroundTransparency = 1
+coinCountLabel.Text = "Coins in map: 0"
+coinCountLabel.TextColor3 = Color3.fromRGB(200, 200, 255)
+coinCountLabel.TextScaled = true
+coinCountLabel.Font = Enum.Font.Gotham
+coinCountLabel.Parent = frame
 
 -- ========== CORE LOGIC ==========
 local isFarming = false
@@ -171,7 +165,6 @@ local function SetClip(enable)
     end
 end
 
--- Reset round counter on respawn
 LocalPlayer.CharacterAdded:Connect(function(newChar)
     Character = newChar
     Humanoid = newChar:WaitForChild("Humanoid")
@@ -179,33 +172,25 @@ LocalPlayer.CharacterAdded:Connect(function(newChar)
     originalCollisions = {}
     roundCoins = 0
     roundCoinLabel.Text = "Round: 0/" .. maxCoins
-    capMsg.Text = ""
     if isClipping then SetClip(true) end
 end)
 
 -- ========== MOVEMENT ==========
 local function MoveToCoin(coin)
-    -- CRITICAL FIX: Check if the coin still exists before moving
-    if not coin or not coin.Parent then
-        return false  -- Coin is gone, tell the loop to skip it
-    end
-    
+    if not coin or not coin.Parent then return false end
     if not Root or not Root.Parent then RefreshCharacter() end
     if not Root then return false end
 
-    if roundCoins >= maxCoins then
-        return false
-    end
+    if roundCoins >= maxCoins then return false end
 
     local targetPos = coin.Position
-    
-    -- Wall check if not clipping
+
     if not isClipping then
         local direction = (targetPos - Root.Position).Unit
         local ray = Ray.new(Root.Position + Vector3.new(0, 1, 0), direction * 8)
         local hit = workspace:FindPartOnRay(ray, Character)
         if hit and hit:IsA("BasePart") and hit.CanCollide then
-            return false  -- Wall in the way, skip this coin
+            return false
         end
     end
 
@@ -248,24 +233,22 @@ local function FarmLoop()
         end
 
         if roundCoins >= maxCoins then
-            capMsg.Text = "ROUND CAP REACHED (" .. maxCoins .. ")"
             task.wait(0.5)
             continue
-        else
-            capMsg.Text = ""
         end
 
-        -- Use the dynamic CoinList instead of scanning each time
-        if #CoinList == 0 then
+        -- Update coin count display
+        coinCountLabel.Text = "Coins in map: " .. #Coins
+
+        if #Coins == 0 then
             task.wait(0.3)
             continue
         end
 
-        -- Find closest VALID coin
+        -- Find closest coin
         local closestCoin = nil
         local closestDist = math.huge
-        for _, coin in ipairs(CoinList) do
-            -- CRITICAL FIX: Skip coins that no longer exist
+        for _, coin in ipairs(Coins) do
             if coin and coin.Parent and coin:IsA("BasePart") then
                 local dist = (Root.Position - coin.Position).Magnitude
                 if dist < closestDist then
@@ -274,7 +257,7 @@ local function FarmLoop()
                 end
             end
         end
-        
+
         if closestCoin then
             local success = MoveToCoin(closestCoin)
             if success then
@@ -288,7 +271,7 @@ local function FarmLoop()
     end
 end
 
--- ========== TOGGLE FUNCTIONS ==========
+-- ========== TOGGLES ==========
 local function ToggleFarming()
     isFarming = not isFarming
     if isFarming then
