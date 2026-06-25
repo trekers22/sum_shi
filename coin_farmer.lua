@@ -1,4 +1,4 @@
--- MM2 Coin Farmer - FINAL FIXED VERSION
+-- MM2 Coin Farmer - FINAL WITH PROPER ROUND HANDLING
 local SPEED = 16
 local MAX_COINS_PER_ROUND = 40
 
@@ -15,7 +15,6 @@ local function RefreshCharacter()
     Humanoid = Character:WaitForChild("Humanoid")
     Root = Character:WaitForChild("HumanoidRootPart")
 end
-LocalPlayer.CharacterAdded:Connect(RefreshCharacter)
 
 -- ========== COIN TRACKING ==========
 local Coins = {}
@@ -49,6 +48,19 @@ workspace.DescendantRemoving:Connect(function(obj)
     end
 end)
 
+-- ========== ROUND DETECTION ==========
+local function IsRoundActive()
+    -- Check if there are coins in the map - if yes, round is active
+    if #Coins > 0 then return true end
+    -- Check game state if available
+    local gameState = workspace:FindFirstChild("GameState") or game:GetService("ReplicatedStorage"):FindFirstChild("GameState")
+    if gameState then
+        return gameState.Value == "RoundActive" or gameState.Value == "Playing"
+    end
+    -- Fallback: check if character is alive
+    return Humanoid and Humanoid.Health > 0
+end
+
 -- ========== GUI ==========
 local screenGui = Instance.new("ScreenGui")
 screenGui.Name = "CoinFarmerGUI"
@@ -56,7 +68,7 @@ screenGui.ResetOnSpawn = false
 screenGui.Parent = LocalPlayer:WaitForChild("PlayerGui") or game:GetService("CoreGui")
 
 local frame = Instance.new("Frame")
-frame.Size = UDim2.new(0, 280, 0, 230)
+frame.Size = UDim2.new(0, 280, 0, 250)
 frame.Position = UDim2.new(0.8, -300, 0.3, 0)
 frame.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
 frame.BackgroundTransparency = 0.15
@@ -128,13 +140,23 @@ roundCoinLabel.Parent = frame
 
 local coinCountLabel = Instance.new("TextLabel")
 coinCountLabel.Size = UDim2.new(0.85, 0, 0, 20)
-coinCountLabel.Position = UDim2.new(0.075, 0, 0.85, 0)
+coinCountLabel.Position = UDim2.new(0.075, 0, 0.82, 0)
 coinCountLabel.BackgroundTransparency = 1
 coinCountLabel.Text = "Coins in map: 0"
 coinCountLabel.TextColor3 = Color3.fromRGB(200, 200, 255)
 coinCountLabel.TextScaled = true
 coinCountLabel.Font = Enum.Font.Gotham
 coinCountLabel.Parent = frame
+
+local roundStatus = Instance.new("TextLabel")
+roundStatus.Size = UDim2.new(0.85, 0, 0, 20)
+roundStatus.Position = UDim2.new(0.075, 0, 0.9, 0)
+roundStatus.BackgroundTransparency = 1
+roundStatus.Text = "Round: WAITING"
+roundStatus.TextColor3 = Color3.fromRGB(255, 200, 100)
+roundStatus.TextScaled = true
+roundStatus.Font = Enum.Font.Gotham
+roundStatus.Parent = frame
 
 -- ========== CORE LOGIC ==========
 local isFarming = false
@@ -143,6 +165,7 @@ local farmThread = nil
 local totalCoins = 0
 local roundCoins = 0
 local maxCoins = MAX_COINS_PER_ROUND
+local isRoundActive = false
 
 local originalCollisions = {}
 
@@ -168,6 +191,7 @@ local function SetClip(enable)
     end
 end
 
+-- CRITICAL FIX: Clear coin list and rescan on respawn
 LocalPlayer.CharacterAdded:Connect(function(newChar)
     Character = newChar
     Humanoid = newChar:WaitForChild("Humanoid")
@@ -175,6 +199,12 @@ LocalPlayer.CharacterAdded:Connect(function(newChar)
     originalCollisions = {}
     roundCoins = 0
     roundCoinLabel.Text = "Round: 0/" .. maxCoins
+    -- Clear old coin list and rescan
+    Coins = {}
+    task.wait(0.5)
+    ScanCoins()
+    isRoundActive = #Coins > 0
+    roundStatus.Text = isRoundActive and "Round: ACTIVE" or "Round: WAITING"
     if isClipping then SetClip(true) end
 end)
 
@@ -184,7 +214,7 @@ local function MoveToCoin(coin)
     if not Root or not Root.Parent then RefreshCharacter() end
     if not Root then return false end
     if roundCoins >= maxCoins then return false end
-    if Humanoid.Health <= 0 then return false end  -- dead, don't move
+    if Humanoid.Health <= 0 then return false end
 
     local targetPos = coin.Position
 
@@ -229,16 +259,25 @@ end
 -- ========== FARM LOOP ==========
 local function FarmLoop()
     while isFarming do
-        -- Wait if character is dead or missing
+        -- Check if character exists
         if not Root or not Root.Parent then
             RefreshCharacter()
             task.wait(0.5)
             continue
         end
 
+        -- Check if dead
         if Humanoid.Health <= 0 then
-            -- Dead, wait for respawn
             task.wait(0.5)
+            continue
+        end
+
+        -- Check if round is active (has coins)
+        isRoundActive = #Coins > 0
+        roundStatus.Text = isRoundActive and "Round: ACTIVE" or "Round: WAITING"
+
+        if not isRoundActive then
+            task.wait(0.3)
             continue
         end
 
@@ -255,7 +294,7 @@ local function FarmLoop()
             continue
         end
 
-        -- Find closest coin (and remove any that are invalid)
+        -- Find closest coin
         local closestCoin = nil
         local closestDist = math.huge
         local invalidIndices = {}
@@ -278,7 +317,7 @@ local function FarmLoop()
         if closestCoin then
             local success = MoveToCoin(closestCoin)
             if success then
-                -- Manually remove this coin from list to prevent re-collecting
+                -- Remove this coin from list
                 for i, coin in ipairs(Coins) do
                     if coin == closestCoin then
                         table.remove(Coins, i)
